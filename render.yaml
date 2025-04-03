@@ -1,0 +1,17 @@
+services:
+  - type: web
+    name: gtrpay-deposit
+    env: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn app:app -c gunicorn_config.py
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.9.0
+      - key: SECRET_KEY
+        generateValue: true
+      - key: GTRPAY_MERCHANT_ID
+        sync: false
+      - key: GTRPAY_PASSAGE_ID
+        sync: false
+      - key: GTRPAY_SECRET_KEY
+        sync: false
