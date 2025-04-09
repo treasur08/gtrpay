@@ -143,14 +143,7 @@ def gtrpay_callback():
         # Log the callback data for debugging
         print(f"Received callback from GTRPay: {data}")
         
-        # Verify the signature
-        sign = data.pop('sign', None)
-        calculated_sign = generate_signature(data)
-        
-        if sign != calculated_sign:
-            print('Invalid signature in callback')
-            return jsonify({'code': 400, 'msg': 'Invalid signature'})
-        
+      
         # Process the payment notification
         # Here you would update your database with the payment status
         order_no = data.get('orderNo')
