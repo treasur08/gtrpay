@@ -6,6 +6,8 @@ import hashlib
 import requests
 from flask import Flask, request, render_template, redirect, jsonify, url_for, flash, session
 from dotenv import load_dotenv
+import threading
+from collections import defaultdict
 
 load_dotenv()
 app = Flask(__name__)
@@ -17,7 +19,16 @@ GTRPAY_PASSAGE_ID = os.environ.get('GTRPAY_PASSAGE_ID')
 GTRPAY_SECRET_KEY = os.environ.get('GTRPAY_SECRET_KEY')
 GTRPAY_API_URL = 'https://wg.gtrpay001.com/collect/create'
 
+payment_status = defaultdict(lambda: {'status': 'pending', 'timestamp': time.time()})
+payment_lock = threading.Lock()
 
+def cleanup_old_payments():
+    current_time = time.time()
+    with payment_lock:
+        for order_no in list(payment_status.keys()):
+            # Remove payments older than 1 hour
+            if current_time - payment_status[order_no]['timestamp'] > 3600:
+                del payment_status[order_no]
 # Add this function after generate_signature
 def get_merchant_balance():
     try:
@@ -180,6 +191,11 @@ def deposit():
             # Store order info in session for reference
             session['last_order_no'] = result['order_no']
             # Redirect to payment URL
+            with payment_lock:
+                payment_status[result['order_no']] = {
+                    'status': 'pending',
+                    'timestamp': time.time()
+                }
             return redirect(result['pay_url'])
         else:
             flash(result['message'], 'error')
@@ -204,10 +220,15 @@ def gtrpay_callback():
         # Process the payment notification
         # Here you would update your database with the payment status
         order_no = data.get('orderNo')
-        order_status = data.get('orderStatus')
+        pay_status = data.get('payStatus')
         
-        print(f"Processing payment for order {order_no} with status {order_status}")
+        print(f"Processing payment for order {order_no} with status {pay_status}")
         
+        if pay_status == 1:
+            print(f"Payment successful for order {order_no}")
+        
+        else:
+            print(f"Payment failed or pending for order {order_no}")
         # Return success response
         return jsonify({'code': 200, 'msg': 'success'})
     except Exception as e:
