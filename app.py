@@ -5,7 +5,9 @@ import random
 import hashlib
 import requests
 from flask import Flask, request, render_template, redirect, jsonify, url_for, flash, session
+from dotenv import load_dotenv
 
+load_dotenv()
 app = Flask(__name__)
 app.secret_key = os.environ.get('SECRET_KEY', os.urandom(24))
 
@@ -14,6 +16,59 @@ GTRPAY_MERCHANT_ID = os.environ.get('GTRPAY_MERCHANT_ID')
 GTRPAY_PASSAGE_ID = os.environ.get('GTRPAY_PASSAGE_ID')
 GTRPAY_SECRET_KEY = os.environ.get('GTRPAY_SECRET_KEY')
 GTRPAY_API_URL = 'https://wg.gtrpay001.com/collect/create'
+
+
+# Add this function after generate_signature
+def get_merchant_balance():
+    try:
+        print("Starting balance check...")
+        params = {
+            'mchId': GTRPAY_MERCHANT_ID
+        }
+        
+        print(f"Using merchant ID: {GTRPAY_MERCHANT_ID}")
+        
+        # Generate signature
+        params['sign'] = generate_signature(params)
+        print(f"Generated signature: {params['sign']}")
+        
+        # Make API request to GTRPay balance endpoint
+        print(f"Sending request to GTRPay balance API with params: {params}")
+        response = requests.post('https://wg.gtrpay001.com/order/balance', json=params)
+        print(f"Response status code: {response.status_code}")
+        
+        # Print raw response for debugging
+        print(f"Raw response: {response.text}")
+        
+        data = response.json()
+        print(f"Parsed JSON response: {data}")
+        
+        if data['code'] == 200:
+            balance_info = {
+                'success': True,
+                'balance_all': data['data']['balanceAll'],
+                'balance_usable': data['data']['balanceUsable'],
+                'balance_ice': data['data']['balanceIce']
+            }
+            print(f"Balance check successful: {balance_info}")
+            return balance_info
+        else:
+            error_result = {
+                'success': False,
+                'message': data.get('msg', 'Balance check failed')
+            }
+            print(f"Balance check failed: {error_result}")
+            return error_result
+    except Exception as e:
+        print(f"Error checking balance: {e}")
+        print(f"Exception type: {type(e).__name__}")
+        import traceback
+        print(f"Traceback: {traceback.format_exc()}")
+        return {
+            'success': False,
+            'message': 'An error occurred while checking balance'
+        }
+
 
 # Generate a unique order number
 def generate_order_number():
@@ -82,6 +137,8 @@ def index():
 
 @app.route('/deposit', methods=['GET', 'POST'])
 def deposit():
+    balance_info = get_merchant_balance()
+    print(f"Balance info for template: {balance_info}")
     if request.method == 'POST':
         amount = request.form.get('amount')
         site_url = request.form.get('site_url', '')
@@ -90,17 +147,17 @@ def deposit():
         # Validate inputs
         if not amount:
             flash('Amount is required', 'error')
-            return render_template('deposit.html')
+            return render_template('deposit.html', balance_info=balance_info)
         
         try:
             # Convert amount to float to validate
             float_amount = float(amount)
             if float_amount <= 0:
                 flash('Please enter a valid amount', 'error')
-                return render_template('deposit.html')
+                return render_template('deposit.html', balance_info=balance_info)
         except ValueError:
             flash('Please enter a valid amount', 'error')
-            return render_template('deposit.html')
+            return render_template('deposit.html', balance_info=balance_info)
         
         # If no site URL is provided, use the request's host URL
         if not site_url:
@@ -126,9 +183,9 @@ def deposit():
             return redirect(result['pay_url'])
         else:
             flash(result['message'], 'error')
-            return render_template('deposit.html')
+            return render_template('deposit.html', balance_info=balance_info)
     
-    return render_template('deposit.html')
+    return render_template('deposit.html', balance_info=balance_info)
 
 @app.route('/deposit/success')
 def deposit_success():
